@@ -121,31 +121,24 @@ std::string mov_regmem_to_regmem(std::uint8_t byte, std::ifstream& input)
 		else 
 		{
 			std::uint16_t literal;
-			if (mod == Mod::mem_no_displace && rm_bits == RegMem::direct_address)
+			switch (mod)
 			{
-				// special case
+			case Mod::mem_no_displace:
+				literal = (rm_bits == RegMem::direct_address ? get_literal(input, true) : 0U);
+				break;
+			case Mod::mem_8bit_displace:
+				literal = get_literal(input, false);
+				break;
+			case Mod::mem_16bit_displace:
+				literal = get_literal(input, true);
+				break;
+			default:
+				return "";
 			}
-			else
-			{
-				switch (mod)
-				{
-				case Mod::mem_no_displace:
-					literal = 0U;
-					break;
-				case Mod::mem_8bit_displace:
-					literal = get_literal(input, false);
-					break;
-				case Mod::mem_16bit_displace:
-					literal = get_literal(input, true);
-				default:
-					return "";
-				}
 
-				destination = (d_bit ? reg_name : displacement_str(literal, rm_bits));
-				source = (d_bit ? displacement_str(literal, rm_bits) : reg_name);
-			}
+			destination = (d_bit ? reg_name : displacement_str(literal, rm_bits));
+			source = (d_bit ? displacement_str(literal, rm_bits) : reg_name);
 		}
-
 		return { "mov " + destination + ", " + source + '\n' };
 	}
 	catch (...)
@@ -234,6 +227,7 @@ int main(int argc, char** argv)
 		std::uintmax_t file_size{ std::filesystem::file_size(file_path) };
 		std::ifstream input;
 		input.open(file_name, std::ios::binary);
+		input.unsetf(std::ios_base::skipws);
 		if (!file_size || !input)
 		{
 			prompt("Couldn't open " + file_name + " for reading.");
