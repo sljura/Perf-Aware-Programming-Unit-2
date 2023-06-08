@@ -9,6 +9,7 @@ namespace Opcode
 
 	// 6 bits
 	inline constexpr std::uint8_t mov_regmem_to_regmem{ 0x22 };
+	inline constexpr std::uint8_t mov_acc{ 0x28 };
 
 	// 7 bits
 	inline constexpr std::uint8_t mov_imm_to_regmem{ 0x63 }; 

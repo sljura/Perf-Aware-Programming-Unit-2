@@ -18,18 +18,36 @@ void prompt(std::string_view message);
 
 inline std::string get_reg_name(std::uint8_t bits, bool w_bit);
 inline std::string get_rm_name(std::uint8_t rm_bits);
-inline std::string displacement_str(std::uint16_t byte, std::uint8_t rm_bits) noexcept;
+
+
+std::uint16_t get_bytes_of_literal(std::ifstream& input, bool is_16bits);
+inline std::uint8_t get_byte_from_file(std::ifstream& input);
+
+std::string displacement_str(std::uint8_t mod, std::uint8_t rm_bits,
+	std::ifstream& input);
+
 
 void prompt(std::string_view message)
 {
 	std::cout << ">> DECODER: " << message << '\n';
 }
 
+inline std::uint8_t get_byte_from_file(std::ifstream& input)
+{
+	std::uint8_t byte;
+	input >> byte;
+	if (!input)
+	{
+		throw std::runtime_error("input file stream failed");
+	}
+	return byte;
+}
+
 inline std::string get_reg_name(std::uint8_t reg_bits, bool w_bit)
 {
 	if (reg_bits >= register_array_size)
 	{
-		throw std::out_of_range{ "no such register" };
+		throw std::out_of_range{ "get_reg_name(): no such register" };
 	}
 	return w_bit ? Reg::w1[reg_bits] : Reg::w0[reg_bits];
 }
@@ -38,44 +56,92 @@ inline std::string get_rm_name(std::uint8_t rm_bits)
 {
 	if (rm_bits >= register_array_size)
 	{
-		throw std::out_of_range{ "no such register" };
+		throw std::out_of_range{ "get_reg_name(): no such register" };
 	}
 	return RegMem::regs[rm_bits];
 }
 
-inline std::string displacement_str(std::uint16_t byte, std::uint8_t rm_bits) noexcept
+std::uint16_t get_bytes_of_literal(std::ifstream& input, bool is_16bits)
 {
-	if (byte)
-	{
-		return '[' + get_rm_name(rm_bits) + " + " + std::to_string(byte) + ']';
-	}
-	else
-	{
-		return '[' + get_rm_name(rm_bits) + ']';
-	}
-}
-
-std::uint16_t get_literal(std::ifstream& input, bool is_16bits)
-{
-	std::uint8_t byte;
-	input >> byte;
-	if (!input)
-	{
-		throw std::runtime_error("File stream bad");
-	}
+	std::uint8_t byte{ get_byte_from_file(input) };
 	std::uint16_t final_number{ static_cast<std::uint16_t>(byte) };
 
 	if (is_16bits)
 	{
-		input >> byte;
-		if (!input)
-		{
-			throw std::runtime_error("File stream bad");
-		}
-		final_number = final_number | (static_cast<std::uint16_t>(byte) << 8);
+		final_number = (static_cast<std::uint16_t>(get_byte_from_file(input)) << 8) |
+			final_number;
 	}
 
 	return final_number;
+}
+
+std::string displacement_str(std::uint8_t mod, std::uint8_t rm_bits,
+	std::ifstream& input)
+{
+	std::string str{ '[' };
+	bool direct_address{ false };
+	std::uint16_t literal;
+	switch (mod)
+	{
+	case Mod::mem_no_displace:
+		if (rm_bits == RegMem::direct_address)
+		{
+			literal = get_bytes_of_literal(input, true);
+			direct_address = true;
+		}
+		else
+		{
+			literal = 0U;
+		}
+		break;
+	case Mod::mem_8bit_displace:
+		literal = get_bytes_of_literal(input, false);
+		break;
+	case Mod::mem_16bit_displace:
+		literal = get_bytes_of_literal(input, true);
+		break;
+	default:
+		throw std::runtime_error("get_literal_from_mod(): bad mod code");
+	}
+	
+	if (!direct_address)
+	{
+		str.append(get_rm_name(rm_bits));
+	}
+	if (literal)
+	{
+		if (str.length() > 1)
+		{
+			str.append(" + ");
+		}
+		str.append(std::to_string(literal));
+	}
+
+	return str + ']';
+}
+
+std::string mov_imm_to_regmem(std::uint8_t byte, std::ifstream& input)
+{
+	try
+	{
+		bool w_bit{ bool_bit_0(byte) };
+		std::uint8_t byte_two{ get_byte_from_file(input) };
+		std::uint8_t rm_bits{ get_lsb_3(byte_two) };
+
+		// Need to handle at least one of destination and source
+		// separately, to make sure the functions are executed
+		// in the correct order. If they're just both put in the return
+		// statement, the order of evaluation doesn't play nicely
+		// and some bytes get swapped.
+		std::string dest{ displacement_str(get_msb_2(byte_two), rm_bits, input) };
+
+		return "mov " + dest + ", " + (w_bit ? "word" : "byte") + ' ' +
+			std::to_string(get_bytes_of_literal(input, w_bit)) + '\n';
+	}
+	catch (...)
+	{
+		return "";
+	}
 }
 
 std::string mov_imm_to_reg(std::uint8_t byte, std::ifstream& input)
@@ -84,7 +150,7 @@ std::string mov_imm_to_reg(std::uint8_t byte, std::ifstream& input)
 	{
 		bool w_bit{ bool_bit_3(byte) };
 		return "mov " + get_reg_name(get_lsb_3(byte), w_bit) + 
-			", " + std::to_string(get_literal(input, w_bit)) + '\n';
+			", " + std::to_string(get_bytes_of_literal(input, w_bit)) + '\n';
 	}
 	catch (...)
 	{
@@ -96,12 +162,7 @@ std::string mov_regmem_to_regmem(std::uint8_t byte, std::ifstream& input)
 {
 	try
 	{
-		std::uint8_t byte_two;
-		input >> byte_two;
-		if (!input)
-		{
-			return "";
-		}
+		std::uint8_t byte_two{ get_byte_from_file(input) };
 
 		std::string source{};
 		std::string destination{};
@@ -110,36 +171,23 @@ std::string mov_regmem_to_regmem(std::uint8_t byte, std::ifstream& input)
 		bool w_bit{ bool_bit_0(byte) };
 
 		std::uint8_t rm_bits{ get_lsb_3(byte_two) };
-		std::string reg_name{ get_reg_name(get_bits345(byte_two), w_bit) };
 		std::uint8_t mod{ get_msb_2(byte_two) };
 
 		if (mod == Mod::reg)
 		{
-			source = d_bit ? get_reg_name(rm_bits, w_bit) : reg_name;
-			destination = d_bit ? reg_name : get_reg_name(rm_bits, w_bit);
+			source = d_bit ? get_reg_name(rm_bits, w_bit) : 
+				get_reg_name(get_bits345(byte_two), w_bit);
+			destination = d_bit ? get_reg_name(get_bits345(byte_two), w_bit) : 
+				get_reg_name(rm_bits, w_bit);
 		}
 		else 
 		{
-			std::uint16_t literal;
-			switch (mod)
-			{
-			case Mod::mem_no_displace:
-				literal = (rm_bits == RegMem::direct_address ? get_literal(input, true) : 0U);
-				break;
-			case Mod::mem_8bit_displace:
-				literal = get_literal(input, false);
-				break;
-			case Mod::mem_16bit_displace:
-				literal = get_literal(input, true);
-				break;
-			default:
-				return "";
-			}
-
-			destination = (d_bit ? reg_name : displacement_str(literal, rm_bits));
-			source = (d_bit ? displacement_str(literal, rm_bits) : reg_name);
+			destination = (d_bit ? get_reg_name(get_bits345(byte_two), w_bit) : 
+				displacement_str(get_msb_2(byte_two), rm_bits, input));
+			source = (d_bit ? displacement_str(get_msb_2(byte_two), rm_bits, input) :
+				get_reg_name(get_bits345(byte_two), w_bit));
 		}
-		return { "mov " + destination + ", " + source + '\n' };
+		return "mov " + destination + ", " + source + '\n';
 	}
 	catch (...)
 	{
@@ -147,7 +195,14 @@ std::string mov_regmem_to_regmem(std::uint8_t byte, std::ifstream& input)
 	}
 }
 
-//It's in (probably not great) C++, so it reads from the ifstream into an `std::uint8_t` variable. 
+std::string mov_acc(std::uint8_t byte, std::ifstream& input)
+{
+	bool to_mem{ bool_bit_1(byte) };
+	bool w_bit{ bool_bit_0(byte) };
+	std::string imm{ '[' + std::to_string(get_bytes_of_literal(input, w_bit)) + ']' };
+
+	return "mov " + (to_mem ? imm : "ax") + ", " + (to_mem ? "ax" : imm) + '\n';
+}
 
 std::string decoded_file_str(std::ifstream& input, std::uintmax_t file_size)
 {
@@ -185,11 +240,24 @@ std::string decoded_file_str(std::ifstream& input, std::uintmax_t file_size)
 
 		// Check longer opcodes first.
 
-		std::uint8_t masked_byte{ static_cast<std::uint8_t>(byte >> 2) };
+		std::uint8_t masked_byte{ static_cast<std::uint8_t>(byte >> 1) };
+
+		if (masked_byte == Opcode::mov_imm_to_regmem)
+		{
+			input_str.append(mov_imm_to_regmem(byte, input));
+		}
+
+
+		masked_byte = masked_byte >> 1;
 
 		if (masked_byte == Opcode::mov_regmem_to_regmem)
 		{
 			input_str.append(mov_regmem_to_regmem(byte, input));
+			continue;
+		}
+		else if (masked_byte == Opcode::mov_acc)
+		{
+			input_str.append(mov_acc(byte, input));
 			continue;
 		}
 
