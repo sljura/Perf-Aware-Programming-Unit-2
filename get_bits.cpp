@@ -55,7 +55,7 @@ bool bool_bit_3(std::uint8_t byte)
 	return (byte & 0x8);
 }
 
-std::uint8_t get_bits345(std::uint8_t byte)
+std::uint8_t get_bits_345(std::uint8_t byte)
 {
 	return (byte & 0x38) >> 3;
 }

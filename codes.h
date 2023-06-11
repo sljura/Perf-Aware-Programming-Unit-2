@@ -5,20 +5,28 @@
 namespace Opcode
 {
 	// 4 bits
-	inline constexpr std::uint8_t mov_imm_to_reg{ 0x0B };
+	inline constexpr std::uint8_t mov_imm_to_reg{ 0xB0 };
 
 	// 6 bits
-	inline constexpr std::uint8_t mov_regmem_to_regmem{ 0x22 };
-	inline constexpr std::uint8_t mov_acc{ 0x28 };
+	inline constexpr std::uint8_t mov_rm_to_rm{ 0x88 };
+	inline constexpr std::uint8_t mov_accumulator{ 0xA0 };
+	inline constexpr std::uint8_t add_rm_to_rm{ 0x0 };
+	inline constexpr std::uint8_t sub_rm_from_rm{ 0x28 };
+	inline constexpr std::uint8_t cmp_rm_to_rm{ 0x38 };
+
+	// for add, sub, cmp
+	inline constexpr std::uint8_t op_imm_to_rm{ 0x80 };
 
 	// 7 bits
-	inline constexpr std::uint8_t mov_imm_to_regmem{ 0x63 }; 
-	inline constexpr std::uint8_t mov_mem_to_acc{ 0x50 };
-	inline constexpr std::uint8_t mov_acc_to_mem{ 0x51 };
+	inline constexpr std::uint8_t mov_imm_to_rm{ 0xC6 };
+	inline constexpr std::uint8_t add_imm_to_acc{ 0x04 };
+	inline constexpr std::uint8_t sub_imm_from_acc{ 0x2C };
+	inline constexpr std::uint8_t cmp_imm_acc{ 0x3C };
 
 	// 8 bits
-	inline constexpr std::uint8_t mov_regmem_to_seg{ 0x8E };
-	inline constexpr std::uint8_t mov_seg_to_regmem{ 0x8C };
+	inline constexpr std::uint8_t jnz{ 0x75 };
+	inline constexpr std::uint8_t mov_rm_to_seg{ 0x8E };
+	inline constexpr std::uint8_t mov_seg_to_rm{ 0x8C };
 }
 
 inline constexpr size_t register_array_size{ 8 };
@@ -28,10 +36,14 @@ namespace Reg
 	inline constexpr const char* w0[register_array_size]
 		{ "al", "cl", "dl", "bl", "ah", "ch", "dh", "bh" };
 	inline constexpr const char* w1[register_array_size]
-		{ "ax", "cx", "dx", "bx", "sp", "bp", "si", "bi" };
+		{ "ax", "cx", "dx", "bx", "sp", "bp", "si", "di" };
+
+	inline constexpr std::uint8_t opname_add{ 0x0 };
+	inline constexpr std::uint8_t opname_sub{ 0x5 };
+	inline constexpr std::uint8_t opname_cmp{ 0x7 };
 }
 
-namespace RegMem
+namespace RM
 {
 	inline constexpr const char* regs[register_array_size]
 		{ "bx + si", "bx + di", "bp + si", "bp + di", "si", "di", "bp", "bx" };

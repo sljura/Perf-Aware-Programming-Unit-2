@@ -15,4 +15,4 @@ bool bool_bit_0(std::uint8_t byte);
 bool bool_bit_1(std::uint8_t byte);
 bool bool_bit_3(std::uint8_t byte);
 
-std::uint8_t get_bits345(std::uint8_t byte);
+std::uint8_t get_bits_345(std::uint8_t byte);
